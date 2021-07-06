@@ -1,2 +1,5 @@
 GPU_learn/Debug/
 GPU_learn/.vs/
+GPU_learn/x64/
+GPU_learn_CUDA/x64/
+GPU_learn_CUDA/.vs/

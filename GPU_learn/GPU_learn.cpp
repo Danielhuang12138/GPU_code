@@ -2,10 +2,38 @@
 //
 
 #include <iostream>
+#include <stdlib.h>
+#include <stdio.h>
+#include <cuda_runtime.h>
+#define DATATYPE float
+void vector_add_serial(DATATYPE* a, DATATYPE* b, DATATYPE* c,int n) {
+    for (int i = 0; i < n; ++i) {
+        c[i] = a[i] + b[i];
+    }
+}
+
+__global__ void vector_add_gpu_1(DATATYPE* a, DATATYPE* b, DATATYPE* c, int n) {
+    for (int i = 0; i < n; ++i) {
+        c[i] = a[i] + b[i];
+    }
+}
 
 int main()
 {
-    std::cout << "Hello World!\n";
+    float* a, * b, * c;
+    a = new float[10];
+    b = new float[10];
+    c = new float[10];
+    for (int i = 0; i < 10; ++i) {
+        a[i] = i;
+        b[i] = 9 - i;
+    }
+    
+    vector_add_serial(a, b, c, 10);
+    for (int i = 0; i < 10; ++i) {
+        std::cout << c[i] << " ";
+    }
+    std::cout <<"\n" << "Hello World!\n";
 }
 
 // 运行程序: Ctrl + F5 或调试 >“开始执行(不调试)”菜单
