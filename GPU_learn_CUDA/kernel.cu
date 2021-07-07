@@ -7,6 +7,8 @@
 #include <stdio.h>
 #define DATATYPE float
 #define arraySize 5
+#define threadnum 16
+#define blocknum 8
 #define arrayNsize 10
 #define arrayMsize 15
 #define single 1
@@ -48,7 +50,7 @@ __global__ void vector_add_gpu_3(DATATYPE* a, DATATYPE* b, DATATYPE* c, int n) {
         tid += t_n;
     }
 }
-
+//m×n矩阵串行计算
 void vector_add_mn(DATATYPE** a, DATATYPE** b, DATATYPE** c, int m, int n) {
     for (int i = 0; i < m; ++i) {
         for (int j = 0; j < n; ++j) {
@@ -65,11 +67,114 @@ __global__ void vector_add_gpu_4(DATATYPE (* a)[arrayNsize], DATATYPE(* b)[array
         c[tid][tidy] = a[tid][tidy] + b[tid][tidy];
     }
 }
-
+//CPU串行向量内积运算
 void vector_dot_product_serial(DATATYPE* a, DATATYPE* b, DATATYPE* c, int n) {
+    double temp = 0;
+    for (int i = 0; i < n; ++i) {
+        temp += a[i] * b[i];
+    }
+    *c = temp;
+}
+
+//GPU分散归约向量内积
+__global__ void vector_dot_product_gpu_1(DATATYPE* a, DATATYPE* b, DATATYPE* c, int n) {
+    __shared__ DATATYPE tmp[threadnum];
+    const int tidx = threadIdx.x;
+    const int t_n = blockDim.x;
+    int tid = tidx;
+    double temp = 0.0;
+    while (tid < n) {
+        temp += a[tid] * b[tid];
+        tid += t_n;
+        tmp[tidx] = temp;
+        __syncthreads();
+        int i = 2, j = 1;
+        while (i <= threadnum) {
+            if ((tidx % i) == 0) {
+                tmp[tidx] += tmp[tidx + j];
+            }
+            __syncthreads();
+            i *= 2;
+            j *= 2;
+        }
+        if (tidx == 0) {
+            c[0] = tmp[0];
+        }
+    }
 
 }
 
+//单block低线程归约向量内积
+__global__ void vector_dot_product_gpu_2(DATATYPE* a, DATATYPE* b, DATATYPE* c, int n) {
+    __shared__ DATATYPE tmp[threadnum];
+    const int tidx = threadIdx.x;
+    const int t_n = blockDim.x;
+    int tid = tidx;
+    double temp = 0.0;
+    while (tid < n) {
+        temp += a[tid] * b[tid];
+        tid += t_n;
+    }
+    tmp[tidx] = temp;
+    __syncthreads();
+    int i = threadnum / 2;
+    while (i != 0) {
+        if (tidx < i) {
+            tmp[tidx] += tmp[tidx + i];
+        }
+        __syncthreads();
+        i /= 2;
+    }
+    if (tidx == 0) {
+        c[0] = tmp[0];
+    }
+}
+
+//多block向量内积（CPU二次归约）
+__global__ void vector_dot_product_gpu_3(DATATYPE* a, DATATYPE* b, DATATYPE* c_tmp, int n) {
+    __shared__ DATATYPE tmp[threadnum];
+    const int tidx = threadIdx.x;
+    const int bidx = blockIdx.x;
+    const int t_n = blockDim.x * gridDim.x;
+    int tid = bidx * blockDim.x + tidx;
+    double temp = 0.0;
+    while (tid < n) {
+        temp += a[tid] * b[tid];
+        tid += t_n;
+    }
+    tmp[tidx] = temp;
+    __syncthreads();
+    int i = threadnum / 2;
+    while (i != 0) {
+        if (tidx < i) {
+            tmp[tidx] += tmp[tidx + i];
+        }
+        __syncthreads();
+        i /= 2;
+    }
+    if (tidx == 0) {
+        c_tmp[bidx] = tmp[0];
+    }
+}
+
+//GPU归约
+__global__ void vector_dot_product_gpu_4 (float* result_tmp, float* result) {
+    __shared__ float temp[blocknum];
+    const int tidx = threadIdx.x;
+    temp[tidx] = result_tmp[tidx];
+    __syncthreads();
+    int i = blocknum / 2;
+    while (i != 0) {
+        if (tidx < i) {
+            temp[tidx] += temp[tidx + i];
+        }
+        __syncthreads();
+        i /= 2;
+    }
+    if (tidx == 0) {
+        result[0] = temp[0];
+    }
+}
 
 //串行向量加法
 void vector_add_serial(DATATYPE* a, DATATYPE* b, DATATYPE* c, int n) {
@@ -80,8 +185,8 @@ void vector_add_serial(DATATYPE* a, DATATYPE* b, DATATYPE* c, int n) {
 int main()
 {
     //int arraySize = 5;
-    dim3 blocknum(1);
-    dim3 threadnum(arrayMsize,arrayNsize);
+    //dim3 blocknum(1);
+    //dim3 threadnum(arrayMsize,arrayNsize);
     float a[arraySize] = { 1, 2, 3, 4, 5 };
     float b[arraySize] = { 10, 20, 30, 40, 50 };
     float c[arraySize] = { 0 };
@@ -107,8 +212,7 @@ int main()
     }
     //串行测试
     vector_add_serial(a, b, c, arraySize);
-    printf("serial :{1,2,3,4,5} + {10,20,30,40,50} = {%f,%f,%f,%f,%f}\n",
-    c[0], c[1], c[2], c[3], c[4]);
+    //printf("serial :{1,2,3,4,5} + {10,20,30,40,50} = {%f,%f,%f,%f,%f}\n",c[0], c[1], c[2], c[3], c[4]);
     for (int i = 0; i < arraySize; ++i) {
         c[i] = 0;
     }
@@ -130,8 +234,7 @@ int main()
     cudaFree(d_a);
     cudaFree(d_b);
     cudaFree(d_c);
-    printf("single block single thread :{1,2,3,4,5} + {10,20,30,40,50} = {%f,%f,%f,%f,%f}\n",
-        c[0], c[1], c[2], c[3], c[4]);
+    //printf("single block single thread :{1,2,3,4,5} + {10,20,30,40,50} = {%f,%f,%f,%f,%f}\n",c[0], c[1], c[2], c[3], c[4]);
     for (int i = 0; i < arraySize; ++i) {
         c[i] = 0;
     }
@@ -151,8 +254,7 @@ int main()
     cudaFree(d_a);
     cudaFree(d_b);
     cudaFree(d_c);
-    printf("single block multiple thread :{1,2,3,4,5} + {10,20,30,40,50} = {%f,%f,%f,%f,%f}\n",
-        c[0], c[1], c[2], c[3], c[4]);
+    //printf("single block multiple thread :{1,2,3,4,5} + {10,20,30,40,50} = {%f,%f,%f,%f,%f}\n",c[0], c[1], c[2], c[3], c[4]);
     for (int i = 0; i < arraySize; ++i) {
         c[i] = 0;
     }
@@ -165,15 +267,14 @@ int main()
     cudaMemcpy(d_a, a, sizeof(DATATYPE) * arraySize, cudaMemcpyHostToDevice);
     cudaMemcpy(d_b, b, sizeof(DATATYPE) * arraySize, cudaMemcpyHostToDevice);
         //计算
-    vector_add_gpu_3 << <blocknum, threadnum >> > (d_a, d_b, d_c, arraySize);
+    vector_add_gpu_3 <<<blocknum, threadnum >>> (d_a, d_b, d_c, arraySize);
         //复制结果到CPU
     cudaMemcpy(c, d_c, sizeof(DATATYPE) * arraySize, cudaMemcpyDeviceToHost);
         //释放空间
     cudaFree(d_a);
     cudaFree(d_b);
     cudaFree(d_c);
-    printf("multiple block multiple thread :{1,2,3,4,5} + {10,20,30,40,50} = {%f,%f,%f,%f,%f}\n",
-        c[0], c[1], c[2], c[3], c[4]);
+    //printf("multiple block multiple thread :{1,2,3,4,5} + {10,20,30,40,50} = {%f,%f,%f,%f,%f}\n",c[0], c[1], c[2], c[3], c[4]);
     for (int i = 0; i < arraySize; ++i) {
         c[i] = 0;
     }
@@ -191,8 +292,7 @@ int main()
     cudaFree(d_aa);
     cudaFree(d_bb);
     cublasDestroy(handle);
-    printf("cublas :{1,2,3,4,5} + {10,20,30,40,50} = {%f,%f,%f,%f,%f}\n",
-        c1[0], c1[1], c1[2], c1[3], c1[4]);
+    //printf("cublas :{1,2,3,4,5} + {10,20,30,40,50} = {%f,%f,%f,%f,%f}\n",c1[0], c1[1], c1[2], c1[3], c1[4]);
     for (int i = 0; i < arraySize; ++i) {
         c1[i] = 0;
     }
@@ -221,16 +321,98 @@ int main()
     */
     //m×n加法结果验证
     vector_add_mn(aa, bb, cc, arrayMsize, arrayNsize);
-    std::cout << "m×n matrix valid\n";
-    for (int i = 0; i < arrayMsize; ++i) {
+    //std::cout << "m×n matrix valid\n";
+    /*for (int i = 0; i < arrayMsize; ++i) {
         for (int j = 0; j < arrayNsize; ++j) {
             std::cout << cc[i][j] << " ";
             cc[i][j] = 0;
         }
         std::cout << "\n";
+    }*/
+
+    //单block分散归约向量内积
+    DATATYPE* d_cccc,*d_ca;
+    DATATYPE ccccd,*cccc;
+    cccc = &ccccd;
+    cudaMalloc((void**)&d_a, sizeof(DATATYPE) * arraySize);
+    cudaMalloc((void**)&d_b, sizeof(DATATYPE) * arraySize);
+    cudaMalloc((void**)&d_cccc, sizeof(DATATYPE));
+    //复制数据到GPU
+    cudaMemcpy(d_a, a, sizeof(DATATYPE) * arraySize, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b, sizeof(DATATYPE) * arraySize, cudaMemcpyHostToDevice);
+    //计算
+    vector_dot_product_gpu_1 << <single, threadnum >> > (d_a, d_b, d_c, arraySize);
+    //复制结果到CPU
+    cudaMemcpy(cccc, d_c, sizeof(DATATYPE), cudaMemcpyDeviceToHost);
+    //释放空间
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_c);
+    printf("single block:{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n",ccccd);
+    cccc = 0;
+
+    //单block低线程归约向量内积
+    cudaMalloc((void**)&d_a, sizeof(DATATYPE) * arraySize);
+    cudaMalloc((void**)&d_b, sizeof(DATATYPE) * arraySize);
+    cudaMalloc((void**)&d_c, sizeof(DATATYPE) * arraySize);
+    //复制数据到GPU
+    cudaMemcpy(d_a, a, sizeof(DATATYPE) * arraySize, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b, sizeof(DATATYPE) * arraySize, cudaMemcpyHostToDevice);
+    //计算
+    vector_dot_product_gpu_2 << <single, threadnum >> > (d_a, d_b, d_c, arraySize);
+    //复制结果到CPU
+    cudaMemcpy(c, d_c, sizeof(DATATYPE) * arraySize, cudaMemcpyDeviceToHost);
+    //释放空间
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_c);
+    printf("single block:{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n",c[0]);
+    c[0] = 0;
+
+    //多block向量内积（CPU二次归约）
+    cudaMalloc((void**)&d_a, sizeof(DATATYPE) * arraySize);
+    cudaMalloc((void**)&d_b, sizeof(DATATYPE) * arraySize);
+    cudaMalloc((void**)&d_c, sizeof(DATATYPE) * arraySize);
+    //复制数据到GPU
+    cudaMemcpy(d_a, a, sizeof(DATATYPE) * arraySize, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b, sizeof(DATATYPE) * arraySize, cudaMemcpyHostToDevice);
+    //计算
+    vector_dot_product_gpu_3 << <blocknum, threadnum >> > (d_a, d_b, d_c, arraySize);
+    //复制结果到CPU
+    cudaMemcpy(c, d_c, sizeof(DATATYPE) * arraySize, cudaMemcpyDeviceToHost);
+    //释放空间
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_c);
+    double temp=0;
+    for (int i = 0; i < blocknum&&i<arraySize; i++) {
+        if(c[i]!=NULL)
+        temp += c[i];
     }
+    c[0] = temp;
+    printf("multiple block(CPU):{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n", c[0]);
+    c[0] = 0;
 
-
+    //多block向量内积（GPU二次归约）
+    cudaMalloc((void**)&d_a, sizeof(DATATYPE) * arraySize);
+    cudaMalloc((void**)&d_b, sizeof(DATATYPE) * arraySize);
+    cudaMalloc((void**)&d_c, sizeof(DATATYPE) * arraySize);
+    cudaMalloc((void**)&d_ca, sizeof(DATATYPE) * arraySize);
+    //复制数据到GPU
+    cudaMemcpy(d_a, a, sizeof(DATATYPE) * arraySize, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b, sizeof(DATATYPE) * arraySize, cudaMemcpyHostToDevice);
+    //计算
+    vector_dot_product_gpu_3 << <blocknum, threadnum >> > (d_a, d_b, d_c, arraySize);
+    vector_dot_product_gpu_4 <<< 1, blocknum >> > (d_c, d_ca);
+    //复制结果到CPU
+    cudaMemcpy(c, d_ca, sizeof(DATATYPE) * arraySize, cudaMemcpyDeviceToHost);
+    //释放空间
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_c);
+    cudaFree(d_ca);
+    printf("multiple block(GPU):{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n", c[0]);
+    c[0] = 0;
 
     // Add vectors in parallel.
     /*cudaError_t cudaStatus = addWithCuda(c, a, b, arraySize);
