@@ -11,7 +11,13 @@
 #define blocknum 8
 #define arrayNsize 10
 #define arrayMsize 15
+#define arraysize 5
 #define single 1
+//第八章 矩阵乘法
+#define arraysizeM 10
+#define arraysizeL 10
+#define arraysizeN 10
+
 cudaError_t addWithCuda(int* c, int* a, int* b, int size);
 //示例程序
 __global__ void addKernel(int *c, int *a, int *b)
@@ -275,10 +281,9 @@ void vector_add_serial(DATATYPE* a, DATATYPE* b, DATATYPE* c, int n) {
         c[i] = a[i] + b[i];
     }
 }
-
+/*
 int main()
 {
-    //int arraySize = 5;
     //dim3 blocknum(1);
     //dim3 threadnum(arrayMsize,arrayNsize);
     float a[arraySize] = { 1, 2, 3, 4, 5 };
@@ -392,37 +397,36 @@ int main()
     }
 
     //m×n矩阵并行加法
-    /*DATATYPE(*d_aaa)[arrayNsize], (*d_bbb)[arrayNsize], (*d_ccc)[arrayNsize];
-    cudaMalloc((void**)&d_aaa, sizeof(DATATYPE) * arrayMsize * arrayNsize);
-    cudaMalloc((void**)&d_bbb, sizeof(DATATYPE) * arrayMsize * arrayNsize);
-    cudaMalloc((void**)&d_ccc, sizeof(DATATYPE) * arrayMsize * arrayNsize);
-    cudaMemcpy(d_aaa, aa, sizeof(DATATYPE) * arrayNsize * arrayMsize, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_bbb, bb, sizeof(DATATYPE)* arrayNsize* arrayMsize, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_ccc, cc, sizeof(DATATYPE)* arrayNsize* arrayMsize, cudaMemcpyHostToDevice);
-    vector_add_gpu_4 << <blocknum, threadnum >> > (d_aaa, d_bbb, d_ccc, arrayMsize, arrayNsize);
-    cudaMemcpy(cc, d_ccc, sizeof(DATATYPE)* arrayNsize*arrayMsize, cudaMemcpyDeviceToHost);
-    cudaFree(d_aaa);
-    cudaFree(d_bbb);
-    cudaFree(d_ccc);
-    std::cout << "m×n matrix add\n";
-    for (int i = 0; i < arrayMsize; ++i) {
-        for (int j = 0; j < arrayNsize; ++j) {
-            std::cout << cc[i][j] << " ";
-            cc[i][j] = 0;
-        }
-        std::cout << "\n";
-    }
-    */
+    //DATATYPE(*d_aaa)[arrayNsize], (*d_bbb)[arrayNsize], (*d_ccc)[arrayNsize];
+    //cudaMalloc((void**)&d_aaa, sizeof(DATATYPE) * arrayMsize * arrayNsize);
+    //cudaMalloc((void**)&d_bbb, sizeof(DATATYPE) * arrayMsize * arrayNsize);
+    //cudaMalloc((void**)&d_ccc, sizeof(DATATYPE) * arrayMsize * arrayNsize);
+    //cudaMemcpy(d_aaa, aa, sizeof(DATATYPE) * arrayNsize * arrayMsize, cudaMemcpyHostToDevice);
+    //cudaMemcpy(d_bbb, bb, sizeof(DATATYPE)* arrayNsize* arrayMsize, cudaMemcpyHostToDevice);
+    //cudaMemcpy(d_ccc, cc, sizeof(DATATYPE)* arrayNsize* arrayMsize, cudaMemcpyHostToDevice);
+    //vector_add_gpu_4 << <blocknum, threadnum >> > (d_aaa, d_bbb, d_ccc, arrayMsize, arrayNsize);
+    //cudaMemcpy(cc, d_ccc, sizeof(DATATYPE)* arrayNsize*arrayMsize, cudaMemcpyDeviceToHost);
+    //cudaFree(d_aaa);
+    //cudaFree(d_bbb);
+    //cudaFree(d_ccc);
+    //std::cout << "m×n matrix add\n";
+    //for (int i = 0; i < arrayMsize; ++i) {
+    //    for (int j = 0; j < arrayNsize; ++j) {
+    //        std::cout << cc[i][j] << " ";
+    //        cc[i][j] = 0;
+    //    }
+    //    std::cout << "\n";
+    //}
     //m×n加法结果验证
     vector_add_mn(aa, bb, cc, arrayMsize, arrayNsize);
     //std::cout << "m×n matrix valid\n";
-    /*for (int i = 0; i < arrayMsize; ++i) {
-        for (int j = 0; j < arrayNsize; ++j) {
-            std::cout << cc[i][j] << " ";
-            cc[i][j] = 0;
-        }
-        std::cout << "\n";
-    }*/
+    //for (int i = 0; i < arrayMsize; ++i) {
+    //    for (int j = 0; j < arrayNsize; ++j) {
+    //        std::cout << cc[i][j] << " ";
+    //        cc[i][j] = 0;
+    //    }
+    //    std::cout << "\n";
+    //}
 
     //单block分散归约向量内积
     DATATYPE* d_cccc,*d_ca;
@@ -442,7 +446,7 @@ int main()
     cudaFree(d_a);
     cudaFree(d_b);
     cudaFree(d_c);
-    printf("single block:{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n",ccccd);
+    //printf("single block:{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n",ccccd);
     cccc = 0;
 
     //单block低线程归约向量内积
@@ -460,7 +464,7 @@ int main()
     cudaFree(d_a);
     cudaFree(d_b);
     cudaFree(d_c);
-    printf("single block:{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n",c[0]);
+    //printf("single block:{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n",c[0]);
     c[0] = 0;
 
     //多block向量内积（CPU二次归约）
@@ -484,7 +488,7 @@ int main()
         temp += c[i];
     }
     c[0] = temp;
-    printf("multiple block(CPU):{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n", c[0]);
+    //printf("multiple block(CPU):{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n", c[0]);
     c[0] = 0;
     for (int i = 0; i < arraySize; ++i) {
         c[i] = 0;
@@ -507,7 +511,7 @@ int main()
     cudaFree(d_b);
     cudaFree(d_c);
     cudaFree(d_ca);
-    printf("multiple block(GPU):{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n", c[0]);
+    //printf("multiple block(GPU):{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n", c[0]);
     c[0] = 0;
     for (int i = 0; i < arraySize; ++i) {
         c[i] = 0;
@@ -528,7 +532,7 @@ int main()
     cudaFree(d_a);
     cudaFree(d_b);
     cudaFree(d_c);
-    printf("atomic_0 multiple block(GPU):{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n", c[0]);
+    //printf("atomic_0 multiple block(GPU):{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n", c[0]);
     c[0] = 0;
     for (int i = 0; i < arraySize; ++i) {
         c[i] = 0;
@@ -548,7 +552,7 @@ int main()
     cudaFree(d_a);
     cudaFree(d_b);
     cudaFree(d_c);
-    printf("atomic_1 multiple block(GPU):{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n", c[0]);
+    //printf("atomic_1 multiple block(GPU):{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n", c[0]);
     c[0] = 0;
     for (int i = 0; i < arraySize; ++i) {
         c[i] = 0;
@@ -571,7 +575,7 @@ int main()
     cudaFree(d_b);
     cudaFree(d_c);
     cudaFree(d_c_tmp);
-    printf("counting method multiple block(GPU):{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n", c[0]);
+    //printf("counting method multiple block(GPU):{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n", c[0]);
     c[0] = 0;
     for (int i = 0; i < arraySize; ++i) {
         c[i] = 0;
@@ -588,32 +592,237 @@ int main()
     cudaFree(d_aa);
     cudaFree(d_bb);
     cublasDestroy(handle);
-    printf("cublas :{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n",c1[0]);
+    //printf("cublas :{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n",c1[0]);
     for (int i = 0; i < arraySize; ++i) {
         c1[i] = 0;
     }
     
 
     // Add vectors in parallel.
-    /*cudaError_t cudaStatus = addWithCuda(c, a, b, arraySize);
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "addWithCuda failed!");
-        return 1;
-    }
-
-    printf("{1,2,3,4,5} + {10,20,30,40,50} = {%f,%f,%f,%f,%f}\n",
-        c[0], c[1], c[2], c[3], c[4]);
+    //cudaError_t cudaStatus = addWithCuda(c, a, b, arraySize);
+    //if (cudaStatus != cudaSuccess) {
+    //    fprintf(stderr, "addWithCuda failed!");
+    //    return 1;
+    //}
+//
+    //printf("{1,2,3,4,5} + {10,20,30,40,50} = {%f,%f,%f,%f,%f}\n",
+    //    c[0], c[1], c[2], c[3], c[4]);
 
     // cudaDeviceReset must be called before exiting in order for profiling and
     // tracing tools such as Nsight and Visual Profiler to show complete traces.
-    cudaStatus = cudaDeviceReset();
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaDeviceReset failed!");
-        return 1;
-    }
-    */
+    //cudaStatus = cudaDeviceReset();
+    //if (cudaStatus != cudaSuccess) {
+    //    fprintf(stderr, "cudaDeviceReset failed!");
+    //    return 1;
+    //}
+    
     return 0;
 }
+*/
+
+//第八章
+
+//a：m行l列，b：l行n列，c：m行n列,串行计算
+void matrix_multiplication_serial_1(DATATYPE* a, DATATYPE* b, DATATYPE* c, int m, int n, int l) {
+    int i, j, k;
+    double temp = 0.0;
+    for (i = 0; i < m; ++i) {
+        for (j = 0; j < n; ++j) {
+            temp = 0.0;
+            for (k = 0; k < l; k++) {
+                temp += a[i * l + k] * b[k * n + j];
+            }
+            c[i * n + j] = temp;
+        }
+    }
+}
+
+//循环交换矩阵乘法
+void matrix_multiplication_serial_2(DATATYPE* a, DATATYPE* b, DATATYPE* c, int m, int n, int l) {
+    int i, j, k;
+    double temp = 0.0;
+    for (i = 0; i < m; i++) {
+        for (k = 0; k < l; k++) {
+            temp = a[i * l + k];
+            for (j = 0; j < n; j++) {
+                c[i * n + j] += temp * b[k * n + j];
+            }
+        }
+    }
+}
+
+//转置矩阵乘法
+void matrix_multiplication_serial_3(DATATYPE* a, DATATYPE* b, DATATYPE* c, int m, int n, int l) {
+    int i, j, k;
+    double temp = 0.0;
+    DATATYPE* b1;
+    b1 = (DATATYPE*)malloc(sizeof(DATATYPE) * l * n);
+    for (int i = 0; i < l; i++) {
+        for (int j = 0; j < n; j++) {
+            b1[i * l + j] = b[j * n + i];
+        }
+    }
+    for (i = 0; i < m; i++) {
+        for (j = 0; j < n; j++) {
+            temp = 0.0;
+            for (k = 0; k < l; k++) {
+                temp += a[i * l + k] * b1[j * n + k];
+            }
+            c[i * n + j] = temp;
+        }
+    }
+    free(b1);
+}
+
+//grid线程循环矩阵乘法 A:n行lda列;C:n行ldc列；其中ldb=ldc
+__global__ void matrix_multiplication_gpu_1(const DATATYPE* a, size_t lda, const DATATYPE* b, size_t ldb, DATATYPE* c, size_t ldc, int n) {
+    const int tidx = threadIdx.x;
+    const int bidx = blockIdx.x;
+    const int idx = bidx * blockDim.x + tidx;
+    const int row = idx / n;
+    const int column = idx % n;
+    if (row < n && column < ldc) {
+        double tmp = 0.0;
+        for (int i = 0; i < n; i++) {
+            tmp += a[row * lda + i] * b[i * ldb + column];
+        }
+        c[row * ldc + column] = tmp;
+    }
+
+}
+
+//block线程循环矩阵乘法，A：n行lda列，B：lda行ldb列；C：n行ldc列，其中ldb=ldc
+__global__ void matrix_multiplication_gpu_1_0(const DATATYPE* a, size_t lda, const DATATYPE* b, size_t ldb, DATATYPE* c, size_t ldc, int n) {
+    int tidx = threadIdx.x;
+    int bidx = blockIdx.x;
+    double tmp = 0.0;
+    int i;
+    //for (; bidx < n; bidx += gridDim.x) //若矩阵行数超过block上限，则取消该句注释
+    {
+        for (tidx = threadIdx.x; tidx < ldc; tidx += blockDim.x) {
+            tmp = 0.0;
+            for (i = 0; i < lda; i++) {
+                tmp += a[bidx * lda + i] * b[i * ldb + tidx];
+            }
+            c[bidx * ldc + tidx] = tmp;
+        }
+    }
+}
+
+//行共享存储矩阵乘法
+__global__ void matrix_multiplication_gpu_2(const DATATYPE* a, size_t lda, const DATATYPE* b, size_t ldb, DATATYPE* c, size_t ldc, int n) {
+    extern __shared__ DATATYPE data[];
+    const int tid = threadIdx.x;
+    const int row = blockIdx.x;
+    int i, j;
+    for (i = tid; j < n; j += blockDim.x) {
+        data[i] = a[row * lda + i];
+    }
+    __syncthreads();
+    double tmp = 0.0;
+    for (j = tid; j < n; j += blockDim.x) {
+        tmp = 0.0;
+        for (i = 0; i < n; i++) {
+            tmp += data[i] * b[i * ldb + j];
+        }
+        c[row * ldc + j] = tmp;
+    }
+}
+
+int main() {
+    DATATYPE* a, * b, * c, * d_a, * d_b, * d_c;
+    a = (DATATYPE*)malloc(sizeof(DATATYPE*) * arraysizeM * arraysizeL);
+    b = (DATATYPE*)malloc(sizeof(DATATYPE*) * arraysizeL * arraysizeN);
+    c = (DATATYPE*)malloc(sizeof(DATATYPE*) * arraysizeM * arraysizeN);
+    for (int i = 0; i < arraysizeM * arraysizeL; i++) {
+        a[i] = i;
+    }
+    for (int i = 0; i < arraysizeL * arraysizeN; i++) {
+        b[i] = i;
+    }
+    for (int i = 0; i < arraysizeM * arraysizeL; i++) {
+        c[i] = 0;
+    }
+    //串行
+    matrix_multiplication_serial_1(a, b, c, arraysizeM, arraysizeN, arraysizeL);
+    printf("serial a × b = { \n");
+    for (int i = 0; i < arraysizeM; i++) {
+        for (int j = 0; j < arraysizeN; j++) {
+            printf("%7.0f ", c[i * arraysizeM + j]);
+        }
+        printf("\n");
+    }
+    for (int i = 0; i < arraysizeM * arraysizeL; i++) {
+        c[i] = 0;
+    }
+    //循环交换
+    matrix_multiplication_serial_2(a, b, c, arraysizeM, arraysizeN, arraysizeL);
+    printf("serial_mod a × b = { \n");
+    for (int i = 0; i < arraysizeM; i++) {
+        for (int j = 0; j < arraysizeN; j++) {
+            printf("%7.0f ", c[i * arraysizeM + j]);
+        }
+        printf("\n");
+    }
+    for (int i = 0; i < arraysizeM * arraysizeL; i++) {
+        c[i] = 0;
+    }
+    //转置矩阵乘法
+    matrix_multiplication_serial_3(a, b, c, arraysizeM, arraysizeN, arraysizeL);
+    printf("serial_transpose a × b = { \n");
+    for (int i = 0; i < arraysizeM; i++) {
+        for (int j = 0; j < arraysizeN; j++) {
+            printf("%7.0f ", c[i * arraysizeM + j]);
+        }
+        printf("\n");
+    }
+    for (int i = 0; i < arraysizeM * arraysizeL; i++) {
+        c[i] = 0;
+    }
+
+    //grid线程循环矩阵乘法
+    cudaMalloc((void**)&d_a, sizeof(DATATYPE) * arraysizeM * arraysizeL);
+    cudaMalloc((void**)&d_b, sizeof(DATATYPE) * arraysizeL * arraysizeN);
+    cudaMalloc((void**)&d_c, sizeof(DATATYPE) * arraysizeM * arraysizeN);
+    cudaMemcpy(d_a, a, sizeof(DATATYPE) * arraysizeM * arraysizeL, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b, sizeof(DATATYPE) * arraysizeL * arraysizeN, cudaMemcpyHostToDevice);
+    int blocks = (arraysizeN + threadnum - 1) / threadnum;
+    matrix_multiplication_gpu_1 << <blocks * arraysizeN, threadnum >> > (d_a,arraysizeN,d_b,arraysizeN,d_c,arraysizeN,arraysizeN);
+    cudaMemcpy(c, d_c, sizeof(DATATYPE) * arraysizeM * arraysizeN, cudaMemcpyDeviceToHost);
+    printf("serial_transpose a × b = { \n");
+    for (int i = 0; i < arraysizeM; i++) {
+        for (int j = 0; j < arraysizeN; j++) {
+            printf("%7.0f ", c[i * arraysizeM + j]);
+        }
+        printf("\n");
+    }
+    for (int i = 0; i < arraysizeM * arraysizeL; i++) {
+        c[i] = 0;
+    }
+
+    //block线程循环矩阵乘法
+    cudaMalloc((void**)&d_a, sizeof(DATATYPE) * arraysizeM * arraysizeL);
+    cudaMalloc((void**)&d_b, sizeof(DATATYPE) * arraysizeL * arraysizeN);
+    cudaMalloc((void**)&d_c, sizeof(DATATYPE) * arraysizeM * arraysizeN);
+    cudaMemcpy(d_a, a, sizeof(DATATYPE) * arraysizeM * arraysizeL, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b, sizeof(DATATYPE) * arraysizeL * arraysizeN, cudaMemcpyHostToDevice);
+    matrix_multiplication_gpu_1_0 << <arraysizeN, threadnum >> > (d_a, arraysizeN, d_b, arraysizeN, d_c, arraysizeN, arraysizeN);
+    cudaMemcpy(c, d_c, sizeof(DATATYPE) * arraysizeM * arraysizeN, cudaMemcpyDeviceToHost);
+    printf("serial_transpose a × b = { \n");
+    for (int i = 0; i < arraysizeM; i++) {
+        for (int j = 0; j < arraysizeN; j++) {
+            printf("%7.0f ", c[i * arraysizeM + j]);
+        }
+        printf("\n");
+    }
+    for (int i = 0; i < arraysizeM * arraysizeL; i++) {
+        c[i] = 0;
+    }
+
+
+    return 0;
+}
+
 
 // Helper function for using CUDA to add vectors in parallel.
 cudaError_t addWithCuda(int *c, int *a, int *b, int size)
