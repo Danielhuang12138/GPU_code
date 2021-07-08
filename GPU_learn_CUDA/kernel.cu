@@ -223,12 +223,59 @@ __global__ void vector_dot_product_gpu_5(DATATYPE* a, DATATYPE* b, DATATYPE* c, 
 
 }
 
+//计数法实现多block向量内积
+__device__ void vector_dot(DATATYPE* out, volatile DATATYPE* tmp) {
+    const int tidx = threadIdx.x;
+    int i = blockDim.x / 2;
+    while (i != 0) {
+        if (tidx < i) {
+            tmp[tidx] += tmp[tidx + i];
+        }
+        __syncthreads();
+        i /= 2;
+    }
+    if (tidx == 0) {
+        out[0] = tmp[0];
+    }
+}
+__device__ unsigned int lockcount = 0;
+__global__ void vector_dot_product_gpu_6(DATATYPE* a, DATATYPE* b, DATATYPE* c_tmp, DATATYPE* c, int n) {
+    __shared__ DATATYPE tmp[threadnum];
+    const int tidx = threadIdx.x;
+    const int bidx = blockIdx.x;
+    const int t_n = blockDim.x * gridDim.x;
+    int tid = bidx * blockDim.x + tidx;
+    double temp = 0.0;
+    while (tid < n) {
+        temp += a[tid] * b[tid];
+        tid += t_n;
+    }
+    tmp[tidx] = temp;
+    __syncthreads();
+    vector_dot(&c_tmp[blockIdx.x], tmp);
+    __shared__ bool lock;
+    __threadfence();
+    if (tidx == 0) {
+        unsigned int lockiii = atomicAdd(&lockcount, 1);
+        lock = (lockcount == gridDim.x);
+    }
+    __syncthreads();
+    if (lock) {
+        tmp[tidx] = c_tmp[tidx];
+        __syncthreads();
+        vector_dot(c, tmp);
+        lockcount = 0;
+    }
+
+}
+
 //串行向量加法
 void vector_add_serial(DATATYPE* a, DATATYPE* b, DATATYPE* c, int n) {
     for (int i = 0; i < n; ++i) {
         c[i] = a[i] + b[i];
     }
 }
+
 int main()
 {
     //int arraySize = 5;
@@ -266,7 +313,7 @@ int main()
 
     //单block单thread加法测试
         //GPU内存分配
-    DATATYPE* d_a, * d_b, * d_c;
+    DATATYPE* d_a, * d_b, * d_c,* d_c_tmp;
     cudaMalloc((void**)&d_a, sizeof(DATATYPE) * arraySize);
     cudaMalloc((void**)&d_b, sizeof(DATATYPE) * arraySize);
     cudaMalloc((void**)&d_c, sizeof(DATATYPE) * arraySize);
@@ -507,6 +554,45 @@ int main()
         c[i] = 0;
     }
 
+    //计数法实现多block向量内积
+    cudaMalloc((void**)&d_a, sizeof(DATATYPE) * arraySize);
+    cudaMalloc((void**)&d_b, sizeof(DATATYPE) * arraySize);
+    cudaMalloc((void**)&d_c, sizeof(DATATYPE) * arraySize);
+    cudaMalloc((void**)&d_c_tmp, sizeof(DATATYPE) * arraySize);
+    //复制数据到GPU
+    cudaMemcpy(d_a, a, sizeof(DATATYPE) * arraySize, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, b, sizeof(DATATYPE) * arraySize, cudaMemcpyHostToDevice);
+    //计算
+    vector_dot_product_gpu_6 << <blocknum, threadnum >> > (d_a, d_b,d_c_tmp, d_c, arraySize);
+    //复制结果到CPU
+    cudaMemcpy(c, d_c, sizeof(DATATYPE) * arraySize, cudaMemcpyDeviceToHost);
+    //释放空间
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_c);
+    cudaFree(d_c_tmp);
+    printf("counting method multiple block(GPU):{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n", c[0]);
+    c[0] = 0;
+    for (int i = 0; i < arraySize; ++i) {
+        c[i] = 0;
+    }
+
+    //cublas库向量内积
+    cublasCreate(&handle);
+    cudaMalloc((void**)&d_aa, sizeof(DATATYPE) * arraySize);
+    cudaMalloc((void**)&d_bb, sizeof(DATATYPE) * arraySize);
+    cublasSetVector(arraySize, sizeof(DATATYPE), a, 1, d_aa, 1);
+    cublasSetVector(arraySize, sizeof(DATATYPE), b, 1, d_bb, 1);
+    cublasSdot_v2(handle, arraySize, d_aa, 1, d_bb, 1,&c1[0]);
+    //cublasGetVector(arraySize, sizeof(DATATYPE), d_bb, 1, c1, 1);
+    cudaFree(d_aa);
+    cudaFree(d_bb);
+    cublasDestroy(handle);
+    printf("cublas :{1,2,3,4,5} · {10,20,30,40,50} = {%f}\n",c1[0]);
+    for (int i = 0; i < arraySize; ++i) {
+        c1[i] = 0;
+    }
+    
 
     // Add vectors in parallel.
     /*cudaError_t cudaStatus = addWithCuda(c, a, b, arraySize);
