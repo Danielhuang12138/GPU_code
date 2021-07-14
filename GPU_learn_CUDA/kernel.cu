@@ -17,6 +17,7 @@
 #define arraysizeM 10
 #define arraysizeL 10
 #define arraysizeN 10
+#define threadnx 2
 
 cudaError_t addWithCuda(int* c, int* a, int* b, int size);
 //示例程序
@@ -198,6 +199,7 @@ __global__ void vector_dot_product_gpu_5_0(DATATYPE* a, DATATYPE* b, DATATYPE* c
     }
     atomicAdd(c, temp);
 }
+
 //原子操作多block向量内积（block内归约block间原子操作）
 __global__ void vector_dot_product_gpu_5(DATATYPE* a, DATATYPE* b, DATATYPE* c, int n) {
     if ((threadIdx.x == 0) && (blockIdx.x == 0)) {
@@ -715,7 +717,7 @@ __global__ void matrix_multiplication_gpu_2(const DATATYPE* a, size_t lda, const
     const int tid = threadIdx.x;
     const int row = blockIdx.x;
     int i, j;
-    for (i = tid; j < n; j += blockDim.x) {
+    for (i = tid; i < n; i += blockDim.x) {
         data[i] = a[row * lda + i];
     }
     __syncthreads();
@@ -724,16 +726,77 @@ __global__ void matrix_multiplication_gpu_2(const DATATYPE* a, size_t lda, const
         tmp = 0.0;
         for (i = 0; i < n; i++) {
             tmp += data[i] * b[i * ldb + j];
+            //printf("%lf\n",tmp);
         }
         c[row * ldc + j] = tmp;
     }
 }
 
+//棋盘阵列矩阵乘法
+__global__ void matrix_multiplication_gpu_3(const DATATYPE* a, size_t lda, const DATATYPE* b, size_t ldb, DATATYPE* c, size_t ldc, int n) {
+    __shared__ DATATYPE matA[threadnx][threadnx];
+    __shared__ DATATYPE matB[threadnx][threadnx];
+    const int tidc = threadIdx.x;
+    const int tidr = threadIdx.y;
+    const int bidc = blockIdx.x * threadnx;
+    const int bidr = blockIdx.y * threadnx;
+    int i, j;
+    double results = 0.0;
+    for (j = 0;j < n;j += threadnx) {
+        if (tidr + bidr < n && tidc + j < n) {
+            matA[tidr][tidc] = a[(tidr + bidr) * lda + tidc + j];
+        }
+        else {
+            matA[tidr][tidc] = 0;
+        }
+        if (tidr + j < n && tidc + bidc < n) {
+            matB[tidr][tidc] = b[(tidr + j) * ldb + tidc + bidc];
+        }
+        else {
+            matB[tidr][tidc] = 0;
+        }
+        __syncthreads();
+        for (i = 0;i < threadnx;i++) {
+            results += matA[tidr][i] * matB[i][tidc];
+        }
+        __syncthreads();
+    }
+    if (tidr + bidr < n && tidc + bidc < n) {
+        c[(tidr + bidr) * ldc + tidc + bidc] = results;
+    }
+
+}
+
+//移除棋盘阵列中的判断
+__global__ void matrix_multiplication_gpu_4(const DATATYPE* a, size_t lda, const DATATYPE* b, size_t ldb, DATATYPE* c, size_t ldc, int n) {
+    __shared__ DATATYPE matA[threadnx][threadnx];
+    __shared__ DATATYPE matB[threadnx][threadnx];
+    const int tidc = threadIdx.x;
+    const int tidr = threadIdx.y;
+    const int bidc = blockIdx.x * threadnx;
+    const int bidr = blockIdx.y * threadnx;
+    int i, j;
+    double results = 0.0;
+    for (j = 0;j < n;j += threadnx) {
+        matA[tidr][tidc] = a[(tidr + bidr) * lda + tidc + j];
+        matB[tidr][tidc] = b[(tidr + j) * ldb + tidc + bidc];
+        __syncthreads();
+        for (i = 0;i < threadnx;i++) {
+            results += matA[tidr][i] * matB[i][tidc];
+        }
+        __syncthreads();
+    }
+    if (tidr + bidr < n && tidc + bidc < n) {
+        c[(tidr + bidr) * ldc + tidc + bidc] = results;
+    }
+}
+
 int main() {
-    DATATYPE* a, * b, * c, * d_a, * d_b, * d_c;
+    DATATYPE* a, * b, * c, * d_a, * d_b, * d_c, * d_c3, * c3;
     a = (DATATYPE*)malloc(sizeof(DATATYPE*) * arraysizeM * arraysizeL);
     b = (DATATYPE*)malloc(sizeof(DATATYPE*) * arraysizeL * arraysizeN);
     c = (DATATYPE*)malloc(sizeof(DATATYPE*) * arraysizeM * arraysizeN);
+    c3 = (DATATYPE*)malloc(sizeof(DATATYPE*) * arraysizeM * arraysizeN);
     for (int i = 0; i < arraysizeM * arraysizeL; i++) {
         a[i] = i;
     }
@@ -808,7 +871,7 @@ int main() {
     cudaMemcpy(d_b, b, sizeof(DATATYPE) * arraysizeL * arraysizeN, cudaMemcpyHostToDevice);
     matrix_multiplication_gpu_1_0 << <arraysizeN, threadnum >> > (d_a, arraysizeN, d_b, arraysizeN, d_c, arraysizeN, arraysizeN);
     cudaMemcpy(c, d_c, sizeof(DATATYPE) * arraysizeM * arraysizeN, cudaMemcpyDeviceToHost);
-    printf("serial_transpose a × b = { \n");
+    printf("block thread a × b = { \n");
     for (int i = 0; i < arraysizeM; i++) {
         for (int j = 0; j < arraysizeN; j++) {
             printf("%7.0f ", c[i * arraysizeM + j]);
@@ -819,6 +882,103 @@ int main() {
         c[i] = 0;
     }
 
+    //对齐存储
+    size_t pitch_a, pitch_b, pitch_c;
+    cudaMallocPitch((void**)&d_a, &pitch_a, sizeof(DATATYPE) * arraysizeN, arraysizeN);
+    cudaMallocPitch((void**)&d_b, &pitch_b, sizeof(DATATYPE) * arraysizeN, arraysizeN);
+    cudaMallocPitch((void**)&d_c3, &pitch_c, sizeof(DATATYPE) * arraysizeN, arraysizeN);
+    //printf("%d,%d,%d", pitch_a, pitch_b, pitch_c);
+    cudaMemcpy2D(d_a, pitch_a, a, sizeof(DATATYPE) * arraysizeN, sizeof(DATATYPE) * arraysizeN, arraysizeN, cudaMemcpyHostToDevice);
+    cudaMemcpy2D(d_b, pitch_b, b, sizeof(DATATYPE) * arraysizeN, sizeof(DATATYPE) * arraysizeN, arraysizeN, cudaMemcpyHostToDevice);
+    matrix_multiplication_gpu_2 << <arraysizeN, threadnum, sizeof(DATATYPE)* arraysizeN >> > (d_a, pitch_a / sizeof(DATATYPE), d_b, pitch_b / sizeof(DATATYPE), d_c3, pitch_c / sizeof(DATATYPE), arraysizeN);
+    cudaMemcpy2D(c3, sizeof(DATATYPE) * arraysizeN, d_c3, pitch_c, sizeof(DATATYPE) * arraysizeN, arraysizeN, cudaMemcpyDeviceToHost);
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_c3);
+    printf("aligned storage a × b = { \n");
+    for (int i = 0; i < arraysizeM; i++) {
+        for (int j = 0; j < arraysizeN; j++) {
+            printf("%7.0f ", c3 [i * arraysizeM + j]);
+        }
+        printf("\n");
+    }
+    for (int i = 0; i < arraysizeM * arraysizeL; i++) {
+        c3 [i] = 0;
+    }
+
+    //棋盘阵列矩阵乘法
+    int bx = (arraysizeN + threadnx - 1) / threadnx;
+    dim3 blockns(bx, bx);
+    dim3 threadns(threadnx, threadnx);
+    cudaMallocPitch((void**)&d_a, &pitch_a, sizeof(DATATYPE)* arraysizeN, arraysizeN);
+    cudaMallocPitch((void**)&d_b, &pitch_b, sizeof(DATATYPE)* arraysizeN, arraysizeN);
+    cudaMallocPitch((void**)&d_c3, &pitch_c, sizeof(DATATYPE)* arraysizeN, arraysizeN);
+    cudaMemcpy2D(d_a, pitch_a, a, sizeof(DATATYPE)* arraysizeN, sizeof(DATATYPE)* arraysizeN, arraysizeN, cudaMemcpyHostToDevice);
+    cudaMemcpy2D(d_b, pitch_b, b, sizeof(DATATYPE)* arraysizeN, sizeof(DATATYPE)* arraysizeN, arraysizeN, cudaMemcpyHostToDevice);
+    matrix_multiplication_gpu_3 << <blockns, threadns >> > (d_a, pitch_a / sizeof(DATATYPE), d_b, pitch_b / sizeof(DATATYPE), d_c3, pitch_c / sizeof(DATATYPE), arraysizeN);
+    cudaMemcpy2D(c3, sizeof(DATATYPE)* arraysizeN, d_c3, pitch_c, sizeof(DATATYPE)* arraysizeN, arraysizeN, cudaMemcpyDeviceToHost);
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_c3);
+    printf("checkboard array a × b = { \n");
+    for (int i = 0; i < arraysizeM; i++) {
+        for (int j = 0; j < arraysizeN; j++) {
+            printf("%7.0f ", c3[i * arraysizeM + j]);
+        }
+        printf("\n");
+    }
+    for (int i = 0; i < arraysizeM * arraysizeL; i++) {
+        c3[i] = 0;
+    }
+
+    //优化的棋盘阵列矩阵乘法
+    cudaMallocPitch((void**)&d_a, &pitch_a, sizeof(DATATYPE) * arraysizeN, arraysizeN);
+    cudaMallocPitch((void**)&d_b, &pitch_b, sizeof(DATATYPE) * arraysizeN, arraysizeN);
+    cudaMallocPitch((void**)&d_c3, &pitch_c, sizeof(DATATYPE)* arraysizeN, arraysizeN);
+    cudaMemcpy2D(d_a, pitch_a, a, sizeof(DATATYPE)* arraysizeN, sizeof(DATATYPE)* arraysizeN, arraysizeN, cudaMemcpyHostToDevice);
+    cudaMemcpy2D(d_b, pitch_b, b, sizeof(DATATYPE)* arraysizeN, sizeof(DATATYPE)* arraysizeN, arraysizeN, cudaMemcpyHostToDevice);
+    matrix_multiplication_gpu_4 << <blockns, threadns >> > (d_a, pitch_a / sizeof(DATATYPE), d_b, pitch_b / sizeof(DATATYPE), d_c3, pitch_c / sizeof(DATATYPE), arraysizeN);
+    cudaMemcpy2D(c3, sizeof(DATATYPE)* arraysizeN, d_c3, pitch_c, sizeof(DATATYPE)* arraysizeN, arraysizeN, cudaMemcpyDeviceToHost);
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_c3);
+    printf("improved checkboard a × b = { \n");
+    for (int i = 0; i < arraysizeM; i++) {
+        for (int j = 0; j < arraysizeN; j++) {
+            printf("%7.0f ", c3[i * arraysizeM + j]);
+        }
+        printf("\n");
+    }
+    for (int i = 0; i < arraysizeM * arraysizeL; i++) {
+        c3[i] = 0;
+    }
+    //cublas矩阵乘法
+    cublasHandle_t handle;
+    cublasCreate(&handle);
+    cudaMalloc((void**)&d_a, sizeof(DATATYPE)* arraysizeN* arraysizeN);
+    cudaMalloc((void**)&d_b, sizeof(DATATYPE)* arraysizeN* arraysizeN);
+    cudaMalloc((void**)&d_c3, sizeof(DATATYPE)* arraysizeN* arraysizeN);
+    float alpha = 1.0;
+    float beta = 0.0;
+    cublasSetVector(arraysizeN* arraysizeN, sizeof(DATATYPE), a, 1, d_a, 1);
+    cublasSetVector(arraysizeN* arraysizeN, sizeof(DATATYPE), b, 1, d_b, 1);
+    cublasSetVector(arraysizeN * arraysizeN, sizeof(DATATYPE), c3, 1, d_c3, 1);
+    cublasSgemm_v2(handle, CUBLAS_OP_N, CUBLAS_OP_N, arraysizeN, arraysizeN, arraysizeN, &alpha, d_b, arraysizeN, d_a, arraysizeN, &beta, d_c3, arraysizeN);
+    cublasGetVector(arraysizeN * arraysizeN, sizeof(DATATYPE), d_c3, 1, c3, 1);
+    cudaFree(d_a);
+    cudaFree(d_b);
+    cudaFree(d_c3);
+    cublasDestroy(handle);
+    printf("cublas a × b = { \n");
+    for (int i = 0; i < arraysizeM; i++) {
+        for (int j = 0; j < arraysizeN; j++) {
+            printf("%7.0f ", c3[i * arraysizeM + j]);
+        }
+        printf("\n");
+    }
+    for (int i = 0; i < arraysizeM * arraysizeL; i++) {
+        c3[i] = 0;
+    }
 
     return 0;
 }
