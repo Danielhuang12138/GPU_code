@@ -7,7 +7,7 @@
 #include <stdio.h>
 #define DATATYPE float
 #define arraySize 5
-#define threadnum 2
+#define threadnum 16
 #define blocknum 16
 #define arrayNsize 10
 #define arrayMsize 15
@@ -1062,9 +1062,10 @@ __global__ void matrix_transposition_gpu_2d_2(DATATYPE* a, DATATYPE* c, int m, i
 		unsigned int index_out = yIndex * m + xIndex;
 		c[index_out] = tmp[threadIdx.x][threadIdx.y];
 	}
+	//printf("%.0f %d \n", c[yIndex * m + xIndex], yIndex * m + xIndex);
 }
 
-//共享存储2D矩阵转置diagonal优化
+//共享存储2D矩阵转置diagonal优化(结果不稳定？未成功解决
 __global__ void matrix_transposition_gpu_diagonal(DATATYPE* a, DATATYPE* c, int m, int n) {
 	__shared__ float tile[blocknum][blocknum+1];
 	int blockIdx_x, blockIdx_y;
@@ -1086,6 +1087,15 @@ __global__ void matrix_transposition_gpu_diagonal(DATATYPE* a, DATATYPE* c, int 
 	tile[threadIdx.y][threadIdx.x] = a[index_in];
 	__syncthreads();
 	c[index_out] = tile[threadIdx.x][threadIdx.y];
+	//printf("%.0f%1.0f %d %d %d \n",c[index_out],tile[threadIdx.x][threadIdx.y],threadIdx.x,threadIdx.y,index_out);
+	if (index_out == 0) {
+		for (int i = 0;i < blocknum;i++) {
+			for (int j = 0;j < blocknum + 1;j++) {
+				printf("%4.0f", tile[i][j]);
+			}
+			printf("\n");
+		}
+	}
 
 }
 
@@ -1169,7 +1179,7 @@ int main() {
 		}
 		printf("\n");
 	}
-	matrix_transposition_gpu_diagonal << <blocks, threads >> > (d_a, d_c, arraysizeN, arraysizeN);
+	/*matrix_transposition_gpu_diagonal << <blocks, threads >> > (d_a, d_c, arraysizeN, arraysizeN);
 	cudaMemcpy(c, d_c, sizeof(DATATYPE) * arraysizeM * arraysizeN, cudaMemcpyDeviceToHost);
 	printf("共享存储2D矩阵转置diagonal优化（？:\n");
 
@@ -1179,7 +1189,7 @@ int main() {
 			c[i * arraysizeN + j] = 0;
 		}
 		printf("\n");
-	}
+	}*/
 
 	return 0;
 }
